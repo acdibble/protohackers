@@ -1,0 +1,22 @@
+# fly.toml file generated for purple-bush-5558 on 2022-09-10T19:57:54+02:00
+
+app = "purple-bush-5558"
+kill_signal = "SIGINT"
+kill_timeout = 5
+
+[env]
+  PORT = "8080"
+
+[experimental]
+  allowed_public_ports = []
+  auto_rollback = true
+
+[processes]
+  app = "run --allow-net --allow-env ./main.js"
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = "8080"
