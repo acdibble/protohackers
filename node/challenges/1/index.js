@@ -1,5 +1,5 @@
-import { createServer } from "net";
-import { createInterface } from "readline";
+import { createServer } from 'net';
+import { createInterface } from 'readline';
 
 const isPrime = (number) => {
   if (number % 2 === 0 || number < 2 || !Number.isInteger(number)) return false;
@@ -16,17 +16,17 @@ createServer(async (socket) => {
     for await (const line of createInterface(socket)) {
       const packet = JSON.parse(line);
 
-      if (packet.method !== "isPrime" || typeof packet.number !== "number") {
+      if (packet.method !== 'isPrime' || typeof packet.number !== 'number') {
         throw new Error();
       }
 
       socket.write(
-        JSON.stringify({ method: "isPrime", prime: isPrime(packet.number) }) +
-          "\n"
+        JSON.stringify({ method: 'isPrime', prime: isPrime(packet.number) }) +
+          '\n',
       );
     }
   } catch {
-    socket.write("{}\n");
+    socket.write('{}\n');
     socket.end();
   }
 }).listen(process.env.PORT ?? 8080);

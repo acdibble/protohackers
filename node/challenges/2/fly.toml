@@ -1,6 +1,6 @@
-# fly.toml file generated for means-to-an-end on 2022-09-09T20:35:15+02:00
+# fly.toml file generated for blue-dawn-4985 on 2022-09-24T20:38:22+02:00
 
-app = "means-to-an-end"
+app = "blue-dawn-4985"
 kill_signal = "SIGINT"
 kill_timeout = 5
 processes = []

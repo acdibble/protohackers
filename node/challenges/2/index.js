@@ -1,4 +1,4 @@
-import { createServer, Socket } from "net";
+import { createServer, Socket } from 'net';
 
 /**
  * @param {Buffer} message
@@ -29,10 +29,9 @@ createServer(async (socket) => {
   const store = new Map();
   const responseBuffer = Buffer.alloc(4);
 
-  socket.read;
   try {
     for await (const { type, a, b } of messages(socket)) {
-      if (type === "Q") {
+      if (type === 'Q') {
         const values = [];
 
         store.forEach((value, key) => {
@@ -45,13 +44,13 @@ createServer(async (socket) => {
 
         if (values.length !== 0) {
           const average = Math.round(
-            values.reduce((a, b) => a + b, 0) / values.length
+            values.reduce((a, b) => a + b, 0) / values.length,
           );
           responseBuffer.writeInt32BE(average);
         }
 
         socket.write(responseBuffer);
-      } else if (type === "I") {
+      } else if (type === 'I') {
         store.set(a, b);
       } else {
         throw new Error();
