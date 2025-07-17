@@ -84,6 +84,21 @@ importers:
         specifier: ^3.25.67
         version: 3.25.67
 
+  challenges/9:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.10
+        version: 24.0.10
+      tsx:
+        specifier: ^4.20.3
+        version: 4.20.3
+      typescript:
+        specifier: ^5.8.3
+        version: 5.8.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@24.0.10)(tsx@4.20.3)
+
 packages:
 
   '@esbuild/aix-ppc64@0.25.5':
