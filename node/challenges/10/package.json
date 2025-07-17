@@ -1,19 +1,18 @@
 {
-  "name": "7",
+  "name": "9",
   "version": "1.0.0",
   "description": "",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch main.ts"
+    "dev": "tsx watch main.ts",
+    "test": "vitest"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.10.0",
-  "dependencies": {
-    "@types/debug": "^4.1.12",
+  "devDependencies": {
     "@types/node": "^24.0.10",
-    "debug": "^4.4.1",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"

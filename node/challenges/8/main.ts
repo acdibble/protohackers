@@ -1,18 +1,10 @@
 import { createServer } from 'net';
-import { handleConnection } from './handleConnection.js';
+import { handleConnection } from './handleConnection';
 
-createServer(async (socket) => {
-  socket.on('error', (err) => {
-    console.error('Socket error:', err);
-  });
-
+const server = createServer(async (socket) => {
   try {
     for await (const msg of handleConnection(socket)) {
-      if (socket.closed) return;
-      const string = JSON.stringify(msg);
-      console.log('===>', string);
-      socket.write(string);
-      socket.write('\n');
+      socket.write(Uint8Array.from(msg));
     }
   } catch (error) {
     console.error('Error handling connection:', error);

@@ -1,5 +1,5 @@
 {
-  "name": "8",
+  "name": "7",
   "version": "1.0.0",
   "description": "",
   "type": "module",
@@ -16,7 +16,6 @@
     "debug": "^4.4.1",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
-    "vitest": "^3.2.4",
-    "zod": "^3.25.67"
+    "vitest": "^3.2.4"
   }
 }

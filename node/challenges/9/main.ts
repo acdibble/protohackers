@@ -1,34 +1,25 @@
 import { createServer } from 'net';
-import handleConnection from './handleConnection.js';
-
-const writeLine = async (socket: NodeJS.WritableStream, data: string, append: string) => {
-  const { promise, resolve, reject } = Promise.withResolvers<void>();
-
-  socket.write(data + append, (err) => {
-    if (err) {
-      reject(err);
-    } else {
-      resolve();
-    }
-  });
-
-  return promise;
-};
-
-let counter = 0;
+import { handleConnection } from './handleConnection.js';
 
 createServer(async (socket) => {
-  const id = ++counter;
+  socket.on('error', (err) => {
+    console.error('Socket error:', err);
+  });
 
-  const logMessage = (arrow: '<--' | '-->', msg: string) =>
-    console.log(arrow, id.toString().padStart(4), msg);
-
-  for await (const { message, raw } of handleConnection(socket, logMessage)) {
-    const index = message.indexOf('\n');
-    // Process each line received from the socket
-    logMessage('<--', index === -1 ? message : message.slice(0, index) + '...');
-    await writeLine(socket, message, raw ? '' : '\n');
+  try {
+    for await (const msg of handleConnection(socket)) {
+      if (socket.closed) return;
+      const string = JSON.stringify(msg);
+      console.log('===>', string);
+      socket.write(string);
+      socket.write('\n');
+    }
+  } catch (error) {
+    console.error('Error handling connection:', error);
+  } finally {
+    socket.end();
   }
-}).listen(8080, '0.0.0.0', () => {
-  console.log('Server is listening on port 8080');
+}).listen({
+  host: '0.0.0.0',
+  port: 8080,
 });

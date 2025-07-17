@@ -1,173 +1,199 @@
-import { z } from 'zod/v4';
-import { createInterface } from 'readline/promises';
+import assert from 'assert';
+import dbg from 'debug';
 
-const Message = z.discriminatedUnion('request', [
-  z.object({
-    request: z.literal('get'),
-    queues: z.array(z.string()),
-    wait: z.boolean().optional(),
-  }),
-  z.object({
-    job: z.unknown(),
-    queue: z.string(),
-    request: z.literal('put'),
-    pri: z.number(),
-  }),
-  z.object({ id: z.number(), request: z.literal('abort') }),
-  z.object({ id: z.number(), request: z.literal('delete') }),
-]);
+const debug = dbg('handleConnection');
 
-type Message = z.output<typeof Message>;
+enum State {
+  Cipher,
+  SecondCipherByte,
+  Toys,
+}
 
-type Job = {
-  id: number;
-  job: unknown;
-  pri: number;
-  queue: string;
-};
+const NEWLINE = '\n'.charCodeAt(0);
 
-let idCounter = 0;
+type Op =
+  | { type: 'reversebits' }
+  | { type: 'xor'; n: number }
+  | { type: 'xorpos' }
+  | { type: 'add'; n: number }
+  | { type: 'addpos' };
 
-const queues = new Map<string, Job[]>();
+const reverseBits = (byte: number) =>
+  Number.parseInt(byte.toString(2).padStart(8, '0').split('').reverse().join(''), 2);
 
-const waitMap = new Map<
-  string,
-  { promise: Promise<Job>; resolve: (job: Job) => void; handled: boolean }[]
->();
+const findToy = (buffer: number[]): string => {
+  const list = Buffer.from(buffer).toString('ascii').split(',');
 
-const enqueueJob = (msg: Extract<Message, { request: 'put' }> | Job) => {
-  let id = 'id' in msg ? msg.id : idCounter++;
-  let queue = queues.get(msg.queue);
-  if (!queue) {
-    queue = [];
-    queues.set(msg.queue, queue);
+  let max = 0;
+  let result = '';
+
+  for (const wish of list) {
+    const amount = Number.parseInt(wish, 10);
+    if (amount > max) {
+      max = amount;
+      result = wish;
+    }
   }
-  const waiter = waitMap.get(msg.queue)?.find((w) => !w.handled);
-  const job = { id, job: msg.job, pri: msg.pri, queue: msg.queue };
-  if (waiter) {
-    waiter.handled = true;
-    waiter.resolve(job);
-    waitMap.delete(msg.queue);
-  } else {
-    queue.push(job);
-    queue.sort((a, b) => a.pri - b.pri);
+
+  assert(result !== '', 'No toys found in the list');
+  debug('found toy: "%O"', result);
+  return result;
+};
+
+async function* iterateBytes(iterator: AsyncIterable<Buffer>) {
+  for await (const data of iterator) {
+    yield* data;
   }
-  return id;
-};
+}
 
-const findJob = (msg: Extract<Message, { request: 'get' }>) => {
-  return msg.queues.reduce<Job | null>((acc, queueName) => {
-    const job = queues.get(queueName)?.at(-1) ?? null;
-    if (!job) return acc;
-    if (!acc) return job;
-    if (acc.pri > job.pri) return acc;
-    return job;
-  }, null);
-};
+class Cipher {
+  private inPos = 0;
+  private outPos = 0;
 
-const workerMap = new Map<NodeJS.ReadableStream, Job>();
+  readonly ops: Op[] = [];
 
-const parseJSON = (data: string) => {
-  try {
-    return { ok: true as const, data: JSON.parse(data) };
-  } catch {
-    return { ok: false as const, error: 'Invalid JSON format' };
+  constructor() {}
+
+  addOp(op: Op) {
+    this.ops.push(op);
   }
-};
 
-export async function* handleConnection(socket: NodeJS.ReadableStream) {
-  for await (const line of createInterface({ input: socket })) {
-    console.log('<===', line);
-    const json = parseJSON(line);
-    if (!json.ok) {
-      yield { status: 'error', error: json.error };
-      continue;
+  decodeByte(byte: number): number {
+    const output = this.ops.reduceRight((acc, op) => {
+      switch (op.type) {
+        case 'xor':
+          return (acc ^ op.n) & 255;
+        case 'reversebits':
+          return reverseBits(acc);
+        case 'addpos':
+          return (acc - this.inPos) & 255;
+        case 'xorpos':
+          return (acc ^ this.inPos) & 255;
+        case 'add':
+          return (acc - op.n) & 255;
+        default:
+          const _: never = op;
+          throw new Error(`Unknown operation type: ${op}`);
+      }
+    }, byte);
+
+    this.inPos += 1;
+
+    return output;
+  }
+
+  private encodeByte(byte: number): number {
+    const result = this.ops.reduce((acc, op) => {
+      switch (op.type) {
+        case 'xor':
+          return (acc ^ op.n) & 255;
+        case 'reversebits':
+          return reverseBits(acc);
+        case 'addpos':
+          return (acc + this.outPos) & 255;
+        case 'xorpos':
+          return (acc ^ this.outPos) & 255;
+        case 'add':
+          return (acc + op.n) & 255;
+        default:
+          const _: never = op;
+          throw new Error(`Unknown operation type: ${op}`);
+      }
+    }, byte);
+
+    this.outPos += 1;
+
+    return result;
+  }
+
+  encodeBytes(bytes: string): number[] | null {
+    let hasChange = false;
+
+    const result = bytes
+      .split('')
+      .map((byte) => {
+        const newByte = this.encodeByte(byte.charCodeAt(0));
+        hasChange ||= newByte !== byte.charCodeAt(0);
+        return newByte;
+      })
+      .concat(this.encodeByte(NEWLINE));
+
+    if (!hasChange) {
+      debug('No change in encoding, returning null');
+      return null; // No change in encoding
     }
 
-    const msgResult = Message.safeParse(json.data);
-    if (!msgResult.success) {
-      console.error(`Invalid message format: ${msgResult.error.message}`);
-      console.error(line);
-      yield { status: 'error' };
-      continue;
-    }
+    return result;
+  }
+}
 
-    const msg = msgResult.data;
+export async function* handleConnection(socket: AsyncIterable<Buffer>) {
+  let state = State.Cipher;
 
-    switch (msg.request) {
-      case 'get': {
-        let job = findJob(msg);
-        if (job) {
-          queues.get(job.queue)?.pop();
-          workerMap.set(socket, job);
-          yield { status: 'ok', ...job };
-        } else if (msg.wait) {
-          const { promise, resolve } = Promise.withResolvers<Job>();
-          const waiter = { promise, resolve, handled: false };
-          msg.queues.forEach((q) => {
-            const waiters = waitMap.get(q) ?? [];
-            waiters.push(waiter);
-            waiter.promise = waiter.promise.finally(() => {
-              waitMap.set(
-                q,
-                waiters.filter((w) => w !== waiter),
-              );
-            });
-            waitMap.set(q, waiters);
-          });
-          job = await promise;
-          workerMap.set(socket, job);
-          yield { status: 'ok', ...job };
-        } else {
-          yield { status: 'no-job' };
-        }
-        break;
-      }
-      case 'put': {
-        const id = enqueueJob(msg);
-        yield { status: 'ok', id };
-        break;
-      }
-      case 'abort': {
-        const job = workerMap.get(socket);
-        if (job) {
-          enqueueJob(job);
-          workerMap.delete(socket);
-          yield { status: 'ok' };
-        } else {
-          yield { status: 'no-job' };
-        }
-        break;
-      }
-      case 'delete': {
-        let status = 'no-job';
-        for (const [, jobs] of queues) {
-          const index = jobs.findIndex((j) => j.id === msg.id);
-          if (index !== -1) {
-            jobs.splice(index, 1);
-            status = 'ok';
+  let opType: Extract<Op, { n: number }>['type'] | null = null;
+
+  const it = iterateBytes(socket);
+
+  const buffer: number[] = [];
+
+  const cipher = new Cipher();
+
+  for (let value = await it.next(); !value.done; value = await it.next()) {
+    const byte = value.value;
+
+    switch (state) {
+      case State.Cipher:
+        switch (byte) {
+          case 0:
+            state = State.Toys;
+            debug('got ops', cipher.ops);
             break;
-          }
+          case 1:
+            cipher.addOp({ type: 'reversebits' });
+            break;
+          case 2:
+            state = State.SecondCipherByte;
+            opType = 'xor';
+            break;
+          case 3:
+            cipher.addOp({ type: 'xorpos' });
+            break;
+          case 4:
+            state = State.SecondCipherByte;
+            opType = 'add';
+            break;
+          case 5:
+            cipher.addOp({ type: 'addpos' });
+            break;
+          default:
+            throw new Error(`Unknown cipher byte: ${byte}`);
         }
-        if (status === 'no-job') {
-          for (const [key, job] of workerMap) {
-            if (job.id === msg.id) {
-              workerMap.delete(key);
-              status = 'ok';
-              break;
-            }
-          }
-        }
-        yield { status };
         break;
-      }
+      case State.SecondCipherByte:
+        assert(opType !== null, 'Expected opType to be set');
+        cipher.addOp({ type: opType, n: byte });
+        opType = null;
+        state = State.Cipher;
+        break;
+      case State.Toys:
+        const parsedByte = cipher.decodeByte(byte);
+
+        if (parsedByte === NEWLINE) {
+          debug(
+            'End of toys input, processing buffer: "%O"',
+            Buffer.from(buffer).toString('ascii'),
+          );
+          const toy = findToy(buffer);
+          const bytes = cipher.encodeBytes(toy);
+          if (bytes === null) return;
+          yield bytes;
+          buffer.length = 0;
+        } else {
+          buffer.push(parsedByte);
+        }
+        break;
       default:
-        const _: never = msg;
-        throw new Error('unreachable', { cause: _ });
+        throw new Error(`Unknown state: ${state}`);
     }
   }
-
-  const job = workerMap.get(socket);
-  if (job) enqueueJob(job);
-  workerMap.delete(socket);
 }

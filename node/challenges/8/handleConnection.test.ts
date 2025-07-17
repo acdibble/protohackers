@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { handleConnection } from './handleConnection.js';
-import { Readable } from 'stream';
+import { handleConnection } from './handleConnection';
 
-async function* yieldLines(lines: any[]) {
-  yield* lines.map((l) => JSON.stringify(l) + '\n');
+async function* yieldBytes(bytes: number[]) {
+  yield Buffer.from(bytes);
 }
 
-const collect = async (iterator: AsyncIterable<any>): Promise<any[]> => {
-  const results: any[] = [];
+const collect = async (iterator: AsyncIterable<number[]>): Promise<string[]> => {
+  const results: string[] = [];
 
   for await (const item of iterator) {
-    results.push(item);
+    results.push(
+      Array.from(item)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join(' '),
+    );
   }
 
   return results;
@@ -21,18 +24,13 @@ describe(handleConnection, () => {
     await expect(
       collect(
         handleConnection(
-          Readable.from(
-            yieldLines([
-              { queues: ['q-UV79xFga'], request: 'get' },
-              { pri: 100, request: 'put', job: { title: 'j-DRZwJlOf' }, queue: 'q-UV79xFga' },
-              { queues: ['q-UV79xFga'], request: 'get' },
-            ]),
-          ),
+          yieldBytes([
+            0x02, 0x7b, 0x05, 0x01, 0x00, 0xf2, 0x20, 0xba, 0x44, 0x18, 0x84, 0xba, 0xaa, 0xd0,
+            0x26, 0x44, 0xa4, 0xa8, 0x7e, 0x6a, 0x48, 0xd6, 0x58, 0x34, 0x44, 0xd6, 0x7a, 0x98,
+            0x4e, 0x0c, 0xcc, 0x94, 0x31,
+          ]),
         ),
       ),
-    ).resolves.toEqual([
-      { status: 'no-job' },
-      { id: 0, job: { title: 'j-DRZwJlOf' }, pri: 100, queue: 'q-UV79xFga', status: 'ok' },
-    ]);
+    ).resolves.toEqual(['72 20 ba d8 78 70 ee', 'f2 d0 26 c8 a4 d8 7e']);
   });
 });

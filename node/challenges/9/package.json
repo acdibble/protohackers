@@ -1,20 +1,22 @@
 {
-  "name": "9",
+  "name": "8",
   "version": "1.0.0",
   "description": "",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch main.ts",
-    "test": "vitest"
+    "dev": "tsx watch main.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.10.0",
-  "devDependencies": {
+  "dependencies": {
+    "@types/debug": "^4.1.12",
     "@types/node": "^24.0.10",
+    "debug": "^4.4.1",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "zod": "^3.25.67"
   }
 }
